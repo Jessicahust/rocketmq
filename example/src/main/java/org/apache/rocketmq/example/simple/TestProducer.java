@@ -53,7 +53,7 @@ public class TestProducer {
                     System.out.printf("%s%n", sendResult);
 
                     QueryResult queryMessage =
-                        producer.queryMessage("TopicTest4", "key113", 10, 0, System.currentTimeMillis());
+                        producer.queryMessage("TopicTest10", "key113", 10, 0, System.currentTimeMillis());
                     for (MessageExt m : queryMessage.getMessageList()) {
                         System.out.printf("%s%n", m);
                     }
