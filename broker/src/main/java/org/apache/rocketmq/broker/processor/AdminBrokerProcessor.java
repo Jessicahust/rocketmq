@@ -106,6 +106,17 @@ import org.apache.rocketmq.store.SelectMappedBufferResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * topic的创建过程涉及到3个组件，分别是mqadmin、broker、namesrv。
+
+     整个创建过程是mqadmin->broker->namesrv。
+
+     mqadmin通知broker创建topic和对应的queue信息。
+
+     broker转发通知namesrv保存topic和broker的原信息，同时在本地持久化一份topic配置。
+
+     broker在这个时候不真正创建本地的队列信息
+ */
 public class AdminBrokerProcessor implements NettyRequestProcessor {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -228,8 +239,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         topicConfig.setTopicFilterType(requestHeader.getTopicFilterTypeEnum());
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
-
+        //更新本地的topicConfig
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
+        //向NameServer发送registerBroker请求
         this.brokerController.registerBrokerAll(false, true);
         return null;
     }

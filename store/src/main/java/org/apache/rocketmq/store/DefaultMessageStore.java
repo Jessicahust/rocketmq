@@ -147,6 +147,7 @@ public class DefaultMessageStore implements MessageStore {
     /**
      * @throws IOException
      */
+    @Override
     public boolean load() {
         boolean result = true;
 
@@ -204,6 +205,7 @@ public class DefaultMessageStore implements MessageStore {
     /**
      * @throws Exception
      */
+    @Override
     public void start() throws Exception {
         this.flushConsumeQueueService.start();
         this.commitLog.start();
@@ -230,6 +232,7 @@ public class DefaultMessageStore implements MessageStore {
     /**
 
      */
+    @Override
     public void shutdown() {
         if (!this.shutdown) {
             this.shutdown = true;
@@ -268,6 +271,7 @@ public class DefaultMessageStore implements MessageStore {
         this.transientStorePool.destroy();
     }
 
+    @Override
     public void destroy() {
         this.destroyLogics();
         this.commitLog.destroy();
@@ -284,6 +288,7 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
         if (this.shutdown) {
             log.warn("message store has shutdown, so putMessage is forbidden");
@@ -954,6 +959,7 @@ public class DefaultMessageStore implements MessageStore {
         return false;
     }
 
+    @Override
     public long dispatchBehindBytes() {
         return this.reputMessageService.behind();
     }
@@ -1301,6 +1307,16 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 寻找消费队列
+     * @param topic
+     * @param queueId
+     * @param offset
+     * @param size
+     * @param tagsCode
+     * @param storeTimestamp
+     * @param logicOffset
+     */
     public void putMessagePositionInfo(String topic, int queueId, long offset, int size, long tagsCode, long storeTimestamp,
         long logicOffset) {
         ConsumeQueue cq = this.findConsumeQueue(topic, queueId);
@@ -1529,6 +1545,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 消费队列文件中的消息是需要持久化到磁盘中
+     */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
         private long lastFlushTimestamp = 0;
@@ -1556,6 +1575,7 @@ public class DefaultMessageStore implements MessageStore {
                 for (ConsumeQueue cq : maps.values()) {
                     boolean result = false;
                     for (int i = 0; i < retryTimes && !result; i++) {
+                        // 刷新到磁盘
                         result = cq.flush(flushConsumeQueueLeastPages);
                     }
                 }
@@ -1569,6 +1589,7 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        @Override
         public void run() {
             DefaultMessageStore.log.info(this.getServiceName() + " service started");
 
@@ -1598,8 +1619,13 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 现在我们再来看 Broker 服务器端。首先我们应该知道，消息往 Broker 存储就是在向 CommitLog 消息文件中写入数据的一个过程。在 Broker 启动过程中，
+     * 其会启动一个叫做 ReputMessageService 的服务，这个服务每隔 1 秒会检查一下这个 CommitLog 是否有新的数据写入。ReputMessageService 自身维护了一个偏移量
+     * reputFromOffset，用以对比和 CommitLog 文件中的消息总偏移量的差距。当这两个偏移量不同的时候，就代表有新的消息到来了:
+     */
     class ReputMessageService extends ServiceThread {
-
+        //自身维护的偏移量
         private volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {
@@ -1632,9 +1658,14 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private boolean isCommitLogAvailable() {
+            // 看当前有没有新的消息到来
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
 
+        /**
+         * 在有新的消息到来之后，doReput() 函数会取出新到来的所有消息，每一条消息都会封装为一个 DispatchRequest 请求，进而将这条请求分发给不同的请求消费者，
+         * 我们在这篇文章中只会关注利用消息创建消费队列的服务 CommitLogDispatcherBuildConsumeQueue:
+         */
         private void doReput() {
             for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
 
@@ -1649,12 +1680,14 @@ public class DefaultMessageStore implements MessageStore {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            // 读取一条消息，然后封装为 DispatchRequest
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getMsgSize();
 
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // 分发这个 DispatchRequest 请求
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()

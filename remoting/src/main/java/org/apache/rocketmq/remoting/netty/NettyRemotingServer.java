@@ -142,7 +142,12 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                     return new Thread(r, "NettyServerCodecThread_" + this.threadIndex.incrementAndGet());
                 }
             });
-
+        /**
+         * 整个启动过程与RemotingClient类似, 使用的handler也类似, 区别在于RemotingServerz.
+         * 服务器端以后添加的handler是NettyServerHandler(客户端用的是NettyClientHandler).
+         * 服务器端接收到请求后, 对消息的处理逻辑在NettyRemotingAbstract中(此处省略了一大波
+         * netty框架接收到消息后的数据流转过程),
+         */
         ServerBootstrap childHandler =
             this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector).channel(NioServerSocketChannel.class)
                 .option(ChannelOption.SO_BACKLOG, 1024)
@@ -176,11 +181,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         } catch (InterruptedException e1) {
             throw new RuntimeException("this.serverBootstrap.bind().sync() InterruptedException", e1);
         }
-
+        //如果 channelEventListener 不为 null， 则启动一个专门的线程监听 Channel 的各种事件。
         if (this.channelEventListener != null) {
             this.nettyEventExecuter.start();
         }
-
+        //随后，则启动一个定时器，每隔一段时间查看 responseTable 是否有超时未回应的请求，并完成一些清理工作
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override

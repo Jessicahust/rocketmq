@@ -20,6 +20,10 @@
  */
 package org.apache.rocketmq.common.protocol.route;
 
+/**
+ * 关键点：每1个QueueData对象，对应1个Master机器！！！
+ * 只有master能创建
+ */
 public class QueueData implements Comparable<QueueData> {
     private String brokerName;
     private int readQueueNums;

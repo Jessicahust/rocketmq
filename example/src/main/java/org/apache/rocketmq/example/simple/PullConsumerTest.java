@@ -19,20 +19,23 @@ package org.apache.rocketmq.example.simple;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 public class PullConsumerTest {
     public static void main(String[] args) throws MQClientException {
+        System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.163.14.232:9876");
+
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("please_rename_unique_group_name_5");
         consumer.start();
 
         try {
             MessageQueue mq = new MessageQueue();
             mq.setQueueId(0);
-            mq.setTopic("TopicTest3");
-            mq.setBrokerName("vivedeMacBook-Pro.local");
+            mq.setTopic("TopicTest11");
+            mq.setBrokerName("cilogistics-cp011162141067.et15sqa");
 
-            long offset = 26;
+            long offset = 0;
 
             long beginTime = System.currentTimeMillis();
             PullResult pullResult = consumer.pullBlockIfNotFound(mq, null, offset, 32);

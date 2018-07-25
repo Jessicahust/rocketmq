@@ -70,8 +70,10 @@ public abstract class ConfigManager {
     public synchronized void persist() {
         String jsonString = this.encode(true);
         if (jsonString != null) {
+            //获取文件要存文件名
             String fileName = this.configFilePath();
             try {
+                //将配置信息持久化到磁盘
                 MixAll.string2File(jsonString, fileName);
             } catch (IOException e) {
                 PLOG.error("persist file Exception, " + fileName, e);

@@ -49,7 +49,7 @@ public class BrokerStartup {
     public static Logger log;
 
     public static void main(String[] args) {
-        System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.162.141.67:9876");
+        System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.163.14.232:9876");
         start(createBrokerController(args));
     }
 

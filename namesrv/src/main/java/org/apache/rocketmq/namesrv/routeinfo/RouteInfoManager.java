@@ -47,17 +47,22 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 路由信息 RouteInfoManager 类的管理
+ * 在NameServer上有一个RouteInfoManger对象，这个对象维护了所有topic和所有机器的映射信息，也就是topic的路由结构
  */
 public class RouteInfoManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    //每个topic对应的队列
-    private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;
-    //每个broker对应的信息
-    private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
+    //每个topic对应的队列,QueueData数量和master一样多,由master创建
+    private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;  //核心Map之1: topic到QueueData
+    //每个broker对应的信息,每个broker有多台物理机器，具体来讲，就是1个Master + 多个Slave
+    private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable;  //核心Map之2: 物理机器信息，brokerName到Master/Slave机器列表
     //每个集群对应的broker
     private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+    /**
+     * NameServer收到RegisterBroker信息，更新自己的brokerLiveTable结构
+     * 然后NameServer会每10s，扫描一次这个结构。如果发现上次更新时间距离当前时间超过了BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2（2分钟)，则认为此broker死亡。
+     */
     private final HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
     private final HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
 
@@ -151,7 +156,10 @@ public class RouteInfoManager {
                 }
                 String oldAddr = brokerAddrsMap.put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
-
+                /**
+                 * 上面的代码看起来很复杂，简单的讲其实就是：每来一个Master，创建一个QueueData对象。
+                 * 如果是新建topic，就是添加QueueData对象；如果是修改topic，就是把旧的QueueData删除，加入新的。
+                 */
                 if (null != topicConfigWrapper //
                     && MixAll.MASTER_ID == brokerId) {
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())//
@@ -173,7 +181,7 @@ public class RouteInfoManager {
                         channel,
                         haServerAddr));
                 if (null == prevBrokerLiveInfo) {
-                    log.info("new broker registerd, {} HAServer: {}", brokerAddr, haServerAddr);
+                    log.info("new broker registered, {} HAServer: {}", brokerAddr, haServerAddr);
                 }
 
                 if (filterServerList != null) {
@@ -429,6 +437,9 @@ public class RouteInfoManager {
         return null;
     }
 
+    /**
+     * 然后NameServer会每10s，扫描一次这个结构。如果发现上次更新时间距离当前时间超过了BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2（2分钟)，则认为此broker死亡。
+     */
     public void scanNotActiveBroker() {
         Iterator<Entry<String, BrokerLiveInfo>> it = this.brokerLiveTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -442,12 +453,21 @@ public class RouteInfoManager {
             }
         }
     }
-
+    /**
+     * 清除离线的Broker信息
+     * @param remoteAddr Broker的地址
+     * @param channel Broker和Name Server之间的连接通道，是一个NioSocketChannel实例
+     */
     public void onChannelDestroy(String remoteAddr, Channel channel) {
         String brokerAddrFound = null;
         if (channel != null) {
             try {
                 try {
+                    /**
+                     * 通过channel从brokerLiveTable中找出对应的Broker地址
+                     * 由于只是读，所以只需要获取readLock()
+                     * 若该Broker已经从存活的Broker地址列表中被清除，则直接使用remoteAddr
+                     */
                     this.lock.readLock().lockInterruptibly();
                     Iterator<Entry<String, BrokerLiveInfo>> itBrokerLiveTable =
                         this.brokerLiveTable.entrySet().iterator();
@@ -477,8 +497,16 @@ public class RouteInfoManager {
             try {
                 try {
                     this.lock.writeLock().lockInterruptibly();
+                    // 从存活的Broker地址列表中清除该Broker
                     this.brokerLiveTable.remove(brokerAddrFound);
+                    // 从Filter Server中清除该Broker
                     this.filterServerTable.remove(brokerAddrFound);
+                    /**
+                     * 通过brokerAddrFound从Broker列表中找到该Broker，并删除
+                     * 删除的是BrokerData.brokerAddrs的元素
+                     * 上述操作之后，如果BrokerData.brokerAddrs空了，则从Broker列表中将Broker Name对应的元素删除
+                     * 删除的是成员变量brokerAddrTable的元素
+                     */
                     String brokerNameFound = null;
                     boolean removeBrokerName = false;
                     Iterator<Entry<String, BrokerData>> itBrokerAddrTable =
@@ -507,7 +535,12 @@ public class RouteInfoManager {
                                 brokerData.getBrokerName());
                         }
                     }
-
+                    /**
+                     * 如果该Broker Name下没有节点提供服务(已经从brokerAddrTable中清除)
+                     * 从Broker集群中删除该Broker信息
+                     * 如果集群下没有提供服务的Broker，则从集群列表中删除该进群信息
+                     * 删除的是成员变量clusterAddrTable的元素
+                     */
                     if (brokerNameFound != null && removeBrokerName) {
                         Iterator<Entry<String, Set<String>>> it = this.clusterAddrTable.entrySet().iterator();
                         while (it.hasNext()) {
@@ -529,7 +562,11 @@ public class RouteInfoManager {
                             }
                         }
                     }
-
+                    /**
+                     * 如果该Broker Name下没有节点提供服务(已经从brokerAddrTable中清除)
+                     * 从Topic列表中删除该Broker Name的信息，删除的是topicQueueTable的value的元素
+                     * 如果Topic没有可提供服务的Broker了，则删除Topic的信息，删除的是topicQueueTable的元素
+                     */
                     if (removeBrokerName) {
                         Iterator<Entry<String, List<QueueData>>> itTopicQueueTable =
                             this.topicQueueTable.entrySet().iterator();
@@ -756,6 +793,9 @@ public class RouteInfoManager {
 }
 
 class BrokerLiveInfo {
+    /**
+     * 最后更新时间
+     */
     private long lastUpdateTimestamp;
     private DataVersion dataVersion;
     private Channel channel;

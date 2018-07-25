@@ -151,11 +151,14 @@ public class MixAll {
     public static void string2File(final String str, final String fileName) throws IOException {
 
         String tmpFile = fileName + ".tmp";
+        //将文件写入tmp文件
         string2FileNotSafe(str, tmpFile);
 
         String bakFile = fileName + ".bak";
+        //读文件内容
         String prevContent = file2String(fileName);
         if (prevContent != null) {
+            //备份文件内容
             string2FileNotSafe(prevContent, bakFile);
         }
 
@@ -163,6 +166,7 @@ public class MixAll {
         file.delete();
 
         file = new File(tmpFile);
+        //重命名tmp文件为正式文件
         file.renameTo(new File(fileName));
     }
 

@@ -112,7 +112,7 @@ public class ScheduleMessageService extends ConfigManager {
                 this.timer.schedule(new DeliverDelayedMessageTimerTask(level, offset), FIRST_DELAY_TIME);
             }
         }
-
+        // 每隔 10 秒钟持久化一次
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override
@@ -235,6 +235,11 @@ public class ScheduleMessageService extends ConfigManager {
             return result;
         }
 
+        /**
+         * DeliverDelayedMessageTimerTask 任务会从消费任务队列文件中取出最新的定时消息的 tagsCode ，并计算出的当前是否已经到了这条消息投递的时间。
+         * 如果到了，即 countdown < 0，那么便会从 CommitLog 文件中取出消息，修正消息的话题和队列 ID 等信息，然后重新存储此条消息。如果还没有到，
+         * 那么便会重新执行一个定时时间设置为 countdown 毫秒的定时任务。在完成之后，会更新当前的偏移量表，为下一次做准备
+         */
         public void executeOnTimeup() {
             ConsumeQueue cq =
                 ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(SCHEDULE_TOPIC,
@@ -254,20 +259,24 @@ public class ScheduleMessageService extends ConfigManager {
                             long tagsCode = bufferCQ.getByteBuffer().getLong();
 
                             long now = System.currentTimeMillis();
+                            //消息应该被投递的时间
                             long deliverTimestamp = this.correctDeliverTimestamp(now, tagsCode);
 
                             nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
-
+                            // 是否到时间
                             long countdown = deliverTimestamp - now;
 
                             if (countdown <= 0) {
+                                // 取出消息
                                 MessageExt msgExt =
                                     ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(
                                         offsetPy, sizePy);
 
                                 if (msgExt != null) {
                                     try {
+                                        // 修正消息，设置上正确的话题和队列 ID
                                         MessageExtBrokerInner msgInner = this.messageTimeup(msgExt);
+                                        // 重新存储消息
                                         PutMessageResult putMessageResult =
                                             ScheduleMessageService.this.defaultMessageStore
                                                 .putMessage(msgInner);
@@ -280,6 +289,7 @@ public class ScheduleMessageService extends ConfigManager {
                                             log.error(
                                                 "ScheduleMessageService, a message time up, but reput it failed, topic: {} msgId {}",
                                                 msgExt.getTopic(), msgExt.getMsgId());
+
                                             ScheduleMessageService.this.timer.schedule(
                                                 new DeliverDelayedMessageTimerTask(this.delayLevel,
                                                     nextOffset), DELAY_FOR_A_PERIOD);
@@ -301,6 +311,7 @@ public class ScheduleMessageService extends ConfigManager {
                                     }
                                 }
                             } else {
+                                // countdown 后投递此消息
                                 ScheduleMessageService.this.timer.schedule(
                                     new DeliverDelayedMessageTimerTask(this.delayLevel, nextOffset),
                                     countdown);

@@ -141,10 +141,11 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 }
             });
         //启动netty客户端
-        Bootstrap handler = this.bootstrap.group(this.eventLoopGroupWorker).channel(NioSocketChannel.class)//
+        Bootstrap handler = this.bootstrap.group(this.eventLoopGroupWorker)//处理I/O读写的线程组
+            .channel(NioSocketChannel.class)//通过反射创建NioSocketChannel对象
             .option(ChannelOption.TCP_NODELAY, true)
             .option(ChannelOption.SO_KEEPALIVE, false)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, nettyClientConfig.getConnectTimeoutMillis())
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, nettyClientConfig.getConnectTimeoutMillis()) //客户端链接超时时间
             .option(ChannelOption.SO_SNDBUF, nettyClientConfig.getClientSocketSndBufSize())
             .option(ChannelOption.SO_RCVBUF, nettyClientConfig.getClientSocketRcvBufSize())
             .handler(new ChannelInitializer<SocketChannel>() {
@@ -364,7 +365,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     }
 
     private Channel getAndCreateChannel(final String addr) throws InterruptedException {
-        //无论是producer还是consumer，传进来的addr参数都是null
+        //无论是producer还是consumer，传进来的namesrv addr参数都是null
         if (null == addr)
             return getAndCreateNameserverChannel();
         //因为客户端传入的addr是null，所以客户端不会走到这里来，只有broker才会走到这里来，因为broker传入的addr不为null
@@ -377,12 +378,14 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     }
 
     /**
+     * <p/>Producer、Consumer 从 Namesrv列表选择一个可连接的进行通信。
      * 因为客户端都是与某一台nameserver长连接，因此长连接一旦选定，后面不会变化，
      * 除非nameserver挂掉，所以已建立的长连接要保存起来
      * @return
      * @throws InterruptedException
      */
     private Channel getAndCreateNameserverChannel() throws InterruptedException {
+        // 返回已选择、可连接Namesrv
         String addr = this.namesrvAddrChoosed.get();
         if (addr != null) {
             ChannelWrapper cw = this.channelTables.get(addr);
@@ -454,9 +457,11 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 }
                 //创建和broker的连接
                 if (createNewConnection) {
+                    //生产者需要发送消息时,和broker建立连接,addr默认IP:10919
                     ChannelFuture channelFuture = this.bootstrap.connect(RemotingHelper.string2SocketAddress(addr));//前面已经启动netty客户端,现在和namesrv建立连接
                     log.info("createChannel: begin to connect remote host[{}] asynchronously", addr);
                     cw = new ChannelWrapper(channelFuture);
+                    //保存建立的连接
                     this.channelTables.put(addr, cw);
                 }
             } catch (Exception e) {

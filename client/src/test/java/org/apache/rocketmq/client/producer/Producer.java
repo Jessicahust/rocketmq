@@ -17,7 +17,7 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 public class Producer {
     public static void main(String[] args) throws UnsupportedEncodingException {
         try {
-            System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.162.141.67:9876");
+            System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.163.14.232:9876");
             MQProducer producer = new DefaultMQProducer("rocketmq-study");
 
             producer.start();

@@ -74,6 +74,13 @@ public abstract class NettyRemotingAbstract {
         this.nettyEventExecuter.putNettyEvent(event);
     }
 
+    /**
+     * 在这里，请求可以分为两类，一类是处理别的服务发来的请求；另外一类是处理自己发给别的服务的请求的处理结果。所有的请求其实都是异步的，
+     * 只是将请求相关的 ResponseFuture记在一个 ConcurrentHashMap 中，map 的 key 为与请求相关的一个整数
+     * @param ctx
+     * @param msg
+     * @throws Exception
+     */
     public void processMessageReceived(ChannelHandlerContext ctx, RemotingCommand msg) throws Exception {
         final RemotingCommand cmd = msg;
         if (cmd != null) {
@@ -91,6 +98,7 @@ public abstract class NettyRemotingAbstract {
     }
 
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+        //根据RemotingCommand中的code获取processor和ExecutorService
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessor : matched;
         final int opaque = cmd.getOpaque();
@@ -100,12 +108,14 @@ public abstract class NettyRemotingAbstract {
                 @Override
                 public void run() {
                     try {
+                        //rpc hook
                         RPCHook rpcHook = NettyRemotingAbstract.this.getRPCHook();
                         if (rpcHook != null) {
                             rpcHook.doBeforeRequest(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
                         }
-
+                        //processor处理请求
                         final RemotingCommand response = pair.getObject1().processRequest(ctx, cmd);
+                        //rpc hook
                         if (rpcHook != null) {
                             rpcHook.doAfterResponse(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
                         }
@@ -151,7 +161,9 @@ public abstract class NettyRemotingAbstract {
             }
 
             try {
+                //封装requestTask
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
+                //想线程池提交requestTask
                 pair.getObject2().submit(requestTask);
             } catch (RejectedExecutionException e) {
                 if ((System.currentTimeMillis() % 10000) == 0) {
@@ -262,12 +274,13 @@ public abstract class NettyRemotingAbstract {
 
     public RemotingCommand invokeSyncImpl(final Channel channel, final RemotingCommand request, final long timeoutMillis)
         throws InterruptedException, RemotingSendRequestException, RemotingTimeoutException {
+        //相当于request ID, RemotingCommand会为每一个request产生一个request ID, 从0开始, 每次加1
         final int opaque = request.getOpaque();
 
         try {
             //构建ResponseFuture对象
             final ResponseFuture responseFuture = new ResponseFuture(opaque, timeoutMillis, null, null);
-            //根据opaque缓存所有对外请求
+            //将ResponseFuture放入responseTable
             this.responseTable.put(opaque, responseFuture);
             final SocketAddress addr = channel.remoteAddress();
             //向netty注册回调,向channel写入RemotingCommand对象
@@ -287,7 +300,7 @@ public abstract class NettyRemotingAbstract {
                     PLOG.warn("send a request command to channel <" + addr + "> failed.");
                 }
             });
-
+            //等待服务器端响应结果
             RemotingCommand responseCommand = responseFuture.waitResponse(timeoutMillis);
             if (null == responseCommand) {
                 if (responseFuture.isSendRequestOK()) {

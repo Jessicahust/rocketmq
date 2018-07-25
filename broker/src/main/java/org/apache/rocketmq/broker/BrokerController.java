@@ -95,6 +95,7 @@ public class BrokerController {
     private final NettyClientConfig nettyClientConfig;
     private final MessageStoreConfig messageStoreConfig;
     private final ConsumerOffsetManager consumerOffsetManager;
+    //关键
     private final ConsumerManager consumerManager;
     private final ProducerManager producerManager;
     private final ClientHousekeepingService clientHousekeepingService;
@@ -668,6 +669,9 @@ public class BrokerController {
         //将broker发布到所有的namesrv中的逻辑
         this.registerBrokerAll(true, false);
 
+        /**
+         * 首先，每个Broker会每隔30s向NameSrv更新自身topic信息
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override

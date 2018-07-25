@@ -27,7 +27,7 @@ import org.apache.rocketmq.remoting.common.RemotingHelper;
 
 public class TestProducer {
     public static void main(String[] args) throws MQClientException, InterruptedException {
-        System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.162.141.67:9876");
+        System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY, "11.163.14.232:9876");
         /**
 
          * 一个应用创建一个Producer，由应用来维护此对象，可以设置为全局对象或者单例<br>
@@ -45,7 +45,7 @@ public class TestProducer {
         for (int i = 0; i < 1; i++)
             try {
                 {
-                    Message msg = new Message("TopicTest10",
+                    Message msg = new Message("TopicTest1",
                         "TagA",
                         "key113",
                         "Hello world".getBytes(RemotingHelper.DEFAULT_CHARSET));
@@ -53,7 +53,7 @@ public class TestProducer {
                     System.out.printf("%s%n", sendResult);
 
                     QueryResult queryMessage =
-                        producer.queryMessage("TopicTest10", "key113", 10, 0, System.currentTimeMillis());
+                        producer.queryMessage("TopicTest1", "key113", 10, 0, System.currentTimeMillis());
                     for (MessageExt m : queryMessage.getMessageList()) {
                         System.out.printf("%s%n", m);
                     }

@@ -193,6 +193,7 @@ public class MappedFileQueue {
     //startOffset=0 needCreate=1
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
+        //再获取一次mappedFiles列表最后一个文件
         MappedFile mappedFileLast = getLastMappedFile();
 
         if (mappedFileLast == null) {

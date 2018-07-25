@@ -27,7 +27,7 @@ import org.apache.rocketmq.common.MixAll;
 public class BrokerData implements Comparable<BrokerData> {
     private String cluster;
     private String brokerName;
-    //brokerId就是broker对应的master id
+    //brokerId就是broker对应的master或slave id
     private HashMap<Long/* brokerId */, String/* broker address */> brokerAddrs;
 
     public String selectBrokerAddr() {

@@ -268,7 +268,11 @@ public class MQClientInstance {
                 }
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
-
+        /**
+         * 当某个Broker死亡之后，NameSrv并不会主动通知Producer和Consumer。
+         * 而是Producer/Consumer周期性的去NameSrv取。
+         * 这里的pollNameServerInteval默认是30s。这也就是意味着，默认情况下，当某个Broker挂了之后，Client需要30s的延迟才会得知此消息。
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -281,7 +285,9 @@ public class MQClientInstance {
                 }
             }
         }, 10, this.clientConfig.getPollNameServerInteval(), TimeUnit.MILLISECONDS);
-
+        /**
+         * 关键的1句：向所有的broker发送心跳消息
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -289,7 +295,7 @@ public class MQClientInstance {
                 try {
                     //健康检查相关的
                     MQClientInstance.this.cleanOfflineBroker();
-                    MQClientInstance.this.sendHeartbeatToAllBrokerWithLock();
+                    MQClientInstance.this.sendHeartbeatToAllBrokerWithLock();//关键的1句：向所有的broker发送心跳消息
                 } catch (Exception e) {
                     log.error("ScheduledTask sendHeartbeatToAllBroker exception", e);
                 }
@@ -421,6 +427,7 @@ public class MQClientInstance {
     public void sendHeartbeatToAllBrokerWithLock() {
         if (this.lockHeartbeat.tryLock()) {
             try {
+                // 向所有broker发送心跳消息
                 this.sendHeartbeatToAllBroker();
                 this.uploadFilterClassSource();
             } catch (final Exception e) {
@@ -549,7 +556,9 @@ public class MQClientInstance {
             }
         }
     }
-    //第一次发布topic,查询不到路由信息,抛出异常后会使用默认topic TBW102的配置信息创建该topic的路由信息
+    /**
+     * 第一次发布topic,查询不到路由信息,抛出异常后会使用默认topic TBW102的配置信息创建该topic的路由信息
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault, DefaultMQProducer defaultMQProducer) {
         try {
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {

@@ -35,6 +35,11 @@ public class BrokerHousekeepingService implements ChannelEventListener {
     public void onChannelConnect(String remoteAddr, Channel channel) {
     }
 
+    /**
+     * 当Broker和NameSrv之间的长连接断掉之后，下面的ChannelEventListener里面的函数就会被回调，从而触发NameServer的路由信息更新。
+     * @param remoteAddr
+     * @param channel
+     */
     @Override
     public void onChannelClose(String remoteAddr, Channel channel) {
         this.namesrvController.getRouteInfoManager().onChannelDestroy(remoteAddr, channel);
